@@ -32,19 +32,20 @@ services:
   # Valkey is the BSD Licensed Redis replacement. Redis has changed its
   # license, so it not open-source now, and AWS has moved on to support
   # valkey now.
-  valkey:  
+  valkey:
     image: valkey/valkey:7
     # Connect via TLS:
     # > docker exec -ti comcon-valkey-1 bash
     # > valkey-cli -h localhost -p 6380 --tls --cert /run/valkey.cert --key /run/valkey.key --cacert /run/certifi_plus_mkcert_cacert.pem
-    command: [
-      "valkey-server",
-      "--port 6379",
-      "--tls-port 6380",
-      "--tls-cert-file /run/valkey.cert",
-      "--tls-key-file /run/valkey.key",
-      "--tls-ca-cert-file /run/certifi_plus_mkcert_cacert.pem",
-    ]
+    command:
+      [
+        "valkey-server",
+        "--port 6379",
+        "--tls-port 6380",
+        "--tls-cert-file /run/valkey.cert",
+        "--tls-key-file /run/valkey.key",
+        "--tls-ca-cert-file /run/certifi_plus_mkcert_cacert.pem",
+      ]
     healthcheck:
       # https://stackoverflow.com/a/71504657
       test: ["CMD-SHELL", "valkey-cli ping | grep PONG"]
@@ -156,7 +157,7 @@ services:
       retries: 10
     ports:
       - "11502:9200"
-      - "11506:9600"  # required for Performance Analyzer
+      - "11506:9600" # required for Performance Analyzer
     ulimits:
       memlock:
         soft: -1
@@ -227,12 +228,13 @@ services:
   alloy:
     # NOTE: Reload alloy on making any config changes: curl localhost:11210/-/reload
     image: grafana/alloy:latest
-    command: [
-      "run",
-      "--server.http.listen-addr=0.0.0.0:12345",
-      "--storage.path=/var/lib/alloy/data",
-      "/etc/alloy/config.alloy",
-    ]
+    command:
+      [
+        "run",
+        "--server.http.listen-addr=0.0.0.0:12345",
+        "--storage.path=/var/lib/alloy/data",
+        "/etc/alloy/config.alloy",
+      ]
     depends_on:
       loki:
         condition: service_healthy
