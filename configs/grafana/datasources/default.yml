@@ -1,40 +1,50 @@
 apiVersion: 1
 
 datasources:
-- name: Loki
-  type: loki
-  uid: loki
-  access: proxy
-  url: http://loki:3100
-  jsonData:
-    derivedFields:
-      - datasourceUid: tempo
-        name: trace_id
-        matcherType: "label"
-        matcherRegex: "trace_id"
-        url: '$${__value.raw}'
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      derivedFields:
+        - datasourceUid: tempo
+          name: trace_id
+          matcherType: "label"
+          matcherRegex: "trace_id"
+          url: "$${__value.raw}"
 
-- name: Mimir
-  type: prometheus
-  uid: mimir
-  access: proxy
-  url: http://mimir:9009/prometheus
-  jsonData:
-    exemplarTraceIdDestinations:
-      - datasourceUid: tempo
-        name: trace_id
-    httpMethod: POST
-    timeInterval: "2s"
+  - name: Mimir
+    type: prometheus
+    uid: mimir
+    access: proxy
+    url: http://mimir:9009/prometheus
+    jsonData:
+      exemplarTraceIdDestinations:
+        - datasourceUid: tempo
+          name: trace_id
+      httpMethod: POST
+      timeInterval: "2s"
 
-- name: Tempo
-  type: tempo
-  uid: tempo
-  access: proxy
-  url: http://tempo:3200
-  jsonData:
-    tracesToLogs:
-      datasourceUid: loki
-      filterByTraceID: false
-      spanEndTimeShift: "500ms"
-      spanStartTimeShift: "-500ms"
-      tags: ['dummy']
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # https://github.com/grafana/grafana/blob/main/docs/sources/datasources/tempo/configure-tempo-data-source.md#example-file
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-10m"
+        spanEndTimeShift: "10m"
+        filterByTraceID: true
+        filterBySpanID: false
+
+      tracesToMetrics:
+        datasourceUid: mimir
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        tags: [{ key: "service.name", value: "service" }]
+        queries:
+          - name: "Span Latency Metrics"
+            query: 'sum by (span_name) (rate(traces_spanmetrics_latency_bucket{span_name="$${__span.name}", $$__tags}[5m]))'
