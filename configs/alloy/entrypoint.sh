@@ -1,9 +1,9 @@
 # Generate a random instance id on each boot of the container
 
-INSTANCE_ID="$(date +%s)_$(cat /dev/urandom | tr -dc A-Z0-9 | head -c4)"
+INSTANCE_ID="$(date +"%Y%m%d_%H%M%S")_$(cat /dev/urandom | tr -dc A-Z0-9 | head -c4)"
 
 export INSTANCE_ID
-echo "$INSTANCE_ID" >/run/instance_id
+export OTEL_RESOURCE_ATTRIBUTES="service.instance.id=$INSTANCE_ID"
 
 # TODO: Remove experimental flag once otelcol.processor.deltatocumulative becomes GA
 /bin/alloy run --server.http.listen-addr=0.0.0.0:12345 \

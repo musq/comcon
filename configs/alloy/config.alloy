@@ -18,6 +18,9 @@ local.file "endpoints" {
     filename = "/etc/alloy/endpoints.json"
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Receiver
+
 // The OpenTelemetry receiver is used to ingest all incoming logs, metrics, and trace spans.
 // Note that both the instrumented applications and Beyla use the same receiver to send traces.
 otelcol.receiver.otlp "default" {
@@ -35,10 +38,11 @@ otelcol.receiver.otlp "default" {
     output {
         logs       = [otelcol.processor.batch.default.input]
         metrics    = [otelcol.processor.batch.default.input]
+        traces     = [otelcol.processor.batch.default.input]
 
         // We define where to send the output of all ingested traces. In this case, to the OpenTelemetry batch processor
         // named 'default'.
-        traces = [
+        // traces = [
             // Uncomment the next line to generate service graph metrics from the Alloy. By default this is generated
             // by the Tempo component, so be sure to remove the relevant configuration in the `tempo/tempo.yaml` file.
             //otelcol.connector.servicegraph.tracemetrics.input,
@@ -52,39 +56,68 @@ otelcol.receiver.otlp "default" {
             // tail sampling.
             //otelcol.processor.tail_sampling.errors.input,
 
-            otelcol.processor.batch.default.input,
-
             //otelcol.connector.spanlogs.autologging.input,
-        ]
+        // ]
     }
 }
 
-// The OpenTelemetry batch processor collects trace spans until a batch size or timeout is met, before sending those
-// spans onto another target. This processor is labeled 'default'.
+///////////////////////////////////////////////////////////////////////////////
+// Processors
+
+// The OpenTelemetry batch processor collects trace spans until a batch size or
+// timeout is met, before sending those spans onto another target.
 // https://grafana.com/docs/agent/latest/flow/reference/components/otelcol.processor.batch
 otelcol.processor.batch "default" {
-    // Wait until we've received 1000 samples, up to a maximum of 2000.
+    // Wait until we've received 1000 samples, up to a maximum of 2000
     send_batch_size = 1000
     send_batch_max_size = 2000
-    // Or until 2 seconds have elapsed.
+    // Or until 2 seconds have elapsed
     timeout = "2s"
 
-    // When the Alloy has enough batched data:
+    // Forwards events when Alloy has batched enough data
     output {
-        // Send logs to the OpenTelemetry exporter named 'loki'.
-        logs    = [otelcol.exporter.otlphttp.loki.input]
-
-        // Alter the default labels in metrics to desired format
-        metrics = [otelcol.processor.attributes.alter_metrics_labels.input]
-
-        // Send traces to the OpenTelemetry exporter named 'tempo'.
-        traces  = [otelcol.exporter.otlphttp.tempo.input]
-        // Use otelcol.exporter.otlphttp.tempo_cloud.input for Grafana Cloud
-        // traces = [otelcol.exporter.otlphttp.tempo_cloud.input]
+        logs    = [otelcol.processor.resourcedetection.default.input]
+        metrics = [otelcol.processor.resourcedetection.default.input]
+        traces  = [otelcol.processor.resourcedetection.default.input]
     }
 }
 
+// The OpenTelemetry resource detector automatically detects configured
+// resources and attaches those details to the OTEL events
+// TODO: Remove this component when it becomes possible to configure
+// "service.instance.id" directly via opentelemetry-php SDK.
+// NOTE: We are using this component to override the "service.instance.id"
+// resource attribute. The opentelemetry-php SDK does not respect the
+// OTEL_RESOURCE_ATTRIBUTES=service.instance.id=xyz environment variable and
+// always sets the service.instance.id = UUIDv4 on each request. So the
+// cardinality of the "instance" label in metrics becomes too high. Hence we
+// are overriding this attribute's value using the OTEL_RESOURCE_ATTRIBUTES env
+// variable set in Alloy's container (via entrypoint.sh).
+otelcol.processor.resourcedetection "default" {
+    // The env detector reads resource information from the
+    // OTEL_RESOURCE_ATTRIBUTES environment variable.
+    // This variable must be in the format <key1>=<value1>,<key2>=<value2>,...
+    detectors = ["env"]
+
+    output {
+        logs    = [otelcol.exporter.otlphttp.loki.input]
+        metrics = [otelcol.processor.deltatocumulative.default.input]
+        // metrics = [otelcol.processor.attributes.alter_metrics_labels.input]
+        traces  = [otelcol.exporter.otlphttp.tempo.input]
+    }
+}
+
+// Then OpenTelemetry attributes component can alter attributes values
 otelcol.processor.attributes "alter_metrics_labels" {
+    // WARN: We attach the instance_id of alloy as a label in all metrics to
+    // ensure restarting alloy does not reset the counter. This is a CRITICAL
+    // step.
+    // This is currently not being used because the
+    // otelcol.processor.resourcedetection.default component already sets the
+    // service.instance.id to the Alloy's instance id. So there is no need for
+    // duplicate labels without purpose. But this will need to be enabled when
+    // we have multiple different service instances sending their events to the
+    // same alloy receiver.
     action {
         key = "alloy_instance_id"
         action = "upsert"
@@ -92,25 +125,48 @@ otelcol.processor.attributes "alter_metrics_labels" {
     }
 
     output {
-        // Convert delta temporality metrics to cumulative temporality
-        // https://grafana.com/blog/2023/09/26/opentelemetry-metrics-a-guide-to-delta-vs.-cumulative-temporality-trade-offs/
         metrics = [otelcol.processor.deltatocumulative.default.input]
     }
 }
 
+// Convert delta temporality metrics to cumulative temporality
+// https://grafana.com/blog/2023/09/26/opentelemetry-metrics-a-guide-to-delta-vs.-cumulative-temporality-trade-offs/
 otelcol.processor.deltatocumulative "default" {
     output {
-        // Send metrics to the OpenTelemetry exporter named 'mimir'.
         metrics = [otelcol.exporter.otlphttp.mimir.input]
     }
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Exporters
+
+// Send logs to the OpenTelemetry exporter named 'loki' via OTLP HTTP protocol
 otelcol.exporter.otlphttp "loki" {
     client {
         // client.endpoint is used to construct the logs endpoint as follows: client.endpoint + "/v1/logs"
         // So, logs_endpoint here would be "http://loki:3100/otlp/v1/logs"
         // https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlphttp/#arguments
         endpoint = "http://loki:3100/otlp"
+    }
+}
+
+// Send metrics to the OpenTelemetry exporter named 'mimir' via OTLP HTTP protocol
+otelcol.exporter.otlphttp "mimir" {
+    client {
+        // client.endpoint is used to construct the metrics endpoint as follows: client.endpoint + "/v1/metrics"
+        // So, metrics_endpoint here would be "http://mimir:9009/otlp/v1/metrics"
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlphttp/#arguments
+        endpoint = "http://mimir:9009/otlp"
+    }
+}
+
+// Send traces to the OpenTelemetry exporter named 'tempo' via OTLP HTTP protocol
+otelcol.exporter.otlphttp "tempo" {
+    client {
+        // client.endpoint is used to construct the traces endpoint as follows: client.endpoint + "/v1/traces"
+        // So, traces_endpoint here would be "http://tempo:4318/otlp/v1/traces"
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlphttp/#arguments
+        endpoint = "http://tempo:4318/otlp"
     }
 }
 
@@ -122,24 +178,6 @@ otelcol.exporter.otlphttp "loki" {
 //         endpoint = "http://loki:9095"
 //     }
 // }
-
-otelcol.exporter.otlphttp "mimir" {
-    client {
-        // client.endpoint is used to construct the metrics endpoint as follows: client.endpoint + "/v1/metrics"
-        // So, metrics_endpoint here would be "http://mimir:9009/otlp/v1/metrics"
-        // https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlphttp/#arguments
-        endpoint = "http://mimir:9009/otlp"
-    }
-}
-
-otelcol.exporter.otlphttp "tempo" {
-    client {
-        // client.endpoint is used to construct the traces endpoint as follows: client.endpoint + "/v1/traces"
-        // So, traces_endpoint here would be "http://tempo:4318/otlp/v1/traces"
-        // https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.exporter.otlphttp/#arguments
-        endpoint = "http://tempo:4318/otlp"
-    }
-}
 
 // otelcol.exporter.otlphttp "tempo_cloud" {
 //     client {
