@@ -1,5 +1,10 @@
 ///////////////////////////////////////////////////////////////////////////////
 // Meta
+livedebugging {
+    // WARN: Disable livedebugging on production!
+    enabled = true
+}
+
 logging {
     level  = "info"
     format = "logfmt"
@@ -69,13 +74,34 @@ otelcol.processor.batch "default" {
         // Send logs to the OpenTelemetry exporter named 'loki'.
         logs    = [otelcol.exporter.otlphttp.loki.input]
 
-        // Send metrics to the OpenTelemetry exporter named 'mimir'.
-        metrics = [otelcol.exporter.otlphttp.mimir.input]
+        // Alter the default labels in metrics to desired format
+        metrics = [otelcol.processor.attributes.alter_metrics_labels.input]
 
         // Send traces to the OpenTelemetry exporter named 'tempo'.
         traces  = [otelcol.exporter.otlphttp.tempo.input]
         // Use otelcol.exporter.otlphttp.tempo_cloud.input for Grafana Cloud
         // traces = [otelcol.exporter.otlphttp.tempo_cloud.input]
+    }
+}
+
+otelcol.processor.attributes "alter_metrics_labels" {
+    action {
+        key = "alloy_instance_id"
+        action = "upsert"
+        value = sys.env("INSTANCE_ID")
+    }
+
+    output {
+        // Convert delta temporality metrics to cumulative temporality
+        // https://grafana.com/blog/2023/09/26/opentelemetry-metrics-a-guide-to-delta-vs.-cumulative-temporality-trade-offs/
+        metrics = [otelcol.processor.deltatocumulative.default.input]
+    }
+}
+
+otelcol.processor.deltatocumulative "default" {
+    output {
+        // Send metrics to the OpenTelemetry exporter named 'mimir'.
+        metrics = [otelcol.exporter.otlphttp.mimir.input]
     }
 }
 
