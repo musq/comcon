@@ -231,13 +231,14 @@ services:
   alloy:
     # NOTE: Reload alloy on making any config changes: curl localhost:11210/-/reload
     image: grafana/alloy:latest
-    command:
-      [
-        "run",
-        "--server.http.listen-addr=0.0.0.0:12345",
-        "--storage.path=/var/lib/alloy/data",
-        "/etc/alloy/config.alloy",
-      ]
+    entrypoint: ["/bin/sh", "-c", "/tmp/entrypoint.sh"]
+    # command: [
+    #     "run",
+    #     "--server.http.listen-addr=0.0.0.0:12345",
+    #     "--storage.path=/var/lib/alloy/data",
+    #     "--stability.level=experimental", # TODO: Remove experimental flag once otelcol.processor.deltatocumulative becomes GA
+    #     "/etc/alloy/config.alloy",
+    # ]
     depends_on:
       loki:
         condition: service_healthy
@@ -256,6 +257,7 @@ services:
       - "11211:4317" # gRPC
       - "11212:4318" # HTTP
     volumes:
+      - ./configs/alloy/entrypoint.sh:/tmp/entrypoint.sh
       - ./configs/alloy/config.alloy:/etc/alloy/config.alloy
       - ./configs/alloy/endpoints.json:/etc/alloy/endpoints.json
       - ~/src/comcon-volumes/alloy/data:/var/lib/alloy/data
