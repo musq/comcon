@@ -5,9 +5,52 @@ livedebugging {
     enabled = true
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Instrument Alloy
+// https://grafana.com/docs/alloy/latest/collect/metamonitoring/
+
+//logging {
+    //level  = "info"
+    //format = "logfmt"
+//}
+
 logging {
-    level  = "info"
-    format = "logfmt"
+  level    = "info"
+  format   = "json"
+  write_to = [loki.write.default.receiver]
+  //write_to = [otelcol.receiver.loki.default.receiver]
+}
+
+//otelcol.receiver.loki "default" {
+  //output {
+    //logs = [otelcol.processor.batch.default.input]
+  //}
+//}
+
+loki.write "default" {
+    endpoint {
+        url = "http://loki:3100/loki/api/v1/push"
+    }
+}
+
+prometheus.exporter.self "alloy" {
+}
+
+prometheus.scrape "alloy" {
+  targets    = prometheus.exporter.self.alloy.targets
+  forward_to = [otelcol.receiver.prometheus.default.receiver]
+  scrape_interval = "10s"
+}
+
+otelcol.receiver.prometheus "default" {
+  output {
+    metrics = [otelcol.processor.batch.default.input]
+  }
+}
+
+tracing {
+  sampling_fraction = 0.01
+  write_to = [otelcol.processor.batch.default.input]
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -76,9 +119,13 @@ otelcol.processor.batch "default" {
 
     // Forwards events when Alloy has batched enough data
     output {
-        logs    = [otelcol.processor.resourcedetection.default.input]
-        metrics = [otelcol.processor.resourcedetection.default.input]
-        traces  = [otelcol.processor.resourcedetection.default.input]
+        logs    = [otelcol.exporter.otlphttp.loki.input]
+        metrics = [otelcol.processor.deltatocumulative.default.input]
+        // metrics = [otelcol.processor.attributes.alter_metrics_labels.input]
+        traces  = [otelcol.exporter.otlphttp.tempo.input]
+        // logs    = [otelcol.processor.resourcedetection.default.input]
+        // metrics = [otelcol.processor.resourcedetection.default.input]
+        // traces  = [otelcol.processor.resourcedetection.default.input]
     }
 }
 
@@ -224,4 +271,46 @@ otelcol.auth.headers "tempo" {
         key = "Authorization"
         value = join(["Basic ", json_path(local.file.endpoints.content, ".traces.basicAuthToken")[0]], "")
     }
+}
+
+
+// Monitor Grafana metrics
+// https://grafana.com/docs/grafana/latest/setup-grafana/set-up-grafana-monitoring/
+prometheus.scrape "grafana" {
+	targets = [{"__address__" = "grafana:3000"}]
+  forward_to = [otelcol.receiver.prometheus.default.receiver]
+  scrape_interval = "10s"
+}
+
+// Monitor Loki metrics
+// https://grafana.com/docs/loki/latest/operations/meta-monitoring/mixins/
+// https://github.com/grafana/loki/tree/main/production/loki-mixin-compiled
+// TODO: Import rules.yml and alerts.yml via mimirtool as mentioned in the above link
+// https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/
+prometheus.scrape "loki" {
+	targets = [{"__address__" = "loki:3100"}]
+  forward_to = [otelcol.receiver.prometheus.default.receiver]
+  scrape_interval = "10s"
+}
+
+// Monitor Mimir metrics
+// https://grafana.com/docs/mimir/latest/manage/monitor-grafana-mimir/installing-dashboards-and-alerts/
+// https://github.com/grafana/mimir/tree/main/operations/mimir-mixin-compiled
+// TODO: Import rules.yml and alerts.yml via mimirtool as mentioned in the above link
+// https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/
+prometheus.scrape "mimir" {
+	targets = [{"__address__" = "mimir:9009"}]
+  forward_to = [otelcol.receiver.prometheus.default.receiver]
+  scrape_interval = "10s"
+}
+
+// Monitor Tempo metrics
+// https://grafana.com/docs/tempo/latest/operations/monitor/
+// https://github.com/grafana/tempo/tree/main/operations/tempo-mixin-compiled
+// TODO: Import rules.yml and alerts.yml via mimirtool as mentioned in the above link
+// https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/
+prometheus.scrape "tempo" {
+	targets = [{"__address__" = "tempo:3200"}]
+  forward_to = [otelcol.receiver.prometheus.default.receiver]
+  scrape_interval = "10s"
 }
