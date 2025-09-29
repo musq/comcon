@@ -14,15 +14,15 @@ distributor:
   # The receivers all come from the OpenTelemetry collector. More configuration
   # information can be found there:
   # https://github.com/open-telemetry/opentelemetry-collector/tree/main/receiver
-  receivers:         
+  receivers:
     # For a production deployment you should only enable the receivers you need!
     otlp:
       protocols:
         # Use <container_name>:<port> instead of "0.0.0.0:<port>"
         # https://grafana.com/docs/tempo/latest/release-notes/v2-7/#opentelemetry-collector-receiver-listens-on-localhost-by-default
-        grpc:   # on port 4317
+        grpc: # on port 4317
           endpoint: "tempo:4317"
-        http:   # on port 4318
+        http: # on port 4318
           endpoint: "tempo:4318"
           # WARN: By default tempo exposes the otlp route on "/v1/traces" instead
           # of "/otlp/v1/traces". As a result it becomes inconsistent with Loki
@@ -38,34 +38,41 @@ distributor:
 
 # The ingester receives data from the distributor and processes it into indices and blocks.
 ingester:
-  trace_idle_period: 10s       # The length of time after a trace has not received spans to consider it complete and flush it.
-  max_block_bytes: 1_000_000   # Cut the head block when it hits this size or
-  max_block_duration: 5m       # this much time passes
+  trace_idle_period: 10s # The length of time after a trace has not received spans to consider it complete and flush it.
+  max_block_bytes: 1_000_000 # Cut the head block when it hits this size or
+  max_block_duration: 5m # this much time passes
 
 # The compactor block configures the compactor responsible for compacting TSDB blocks.
 compactor:
   compaction:
-    compaction_window: 1h              # Blocks in this time window will be compacted together.
-    max_block_bytes: 100_000_000       # Maximum size of a compacted block.
-    block_retention: 1440h             # How long to keep blocks. Default is 14 days (336h).
-    compacted_block_retention: 10m     # How long to keep compacted blocks stored elsewhere.
+    compaction_window: 1h # Blocks in this time window will be compacted together.
+    max_block_bytes: 100_000_000 # Maximum size of a compacted block.
+    block_retention: 1440h # How long to keep blocks. Default is 14 days (336h).
+    compacted_block_retention: 10m # How long to keep compacted blocks stored elsewhere.
 
 # Configuration block to determine where to store TSDB blocks.
 storage:
   trace:
-    backend: local                     # Use the local filesystem for block storage. Not recommended for production systems.
+    backend: s3 # Use the local filesystem for block storage. Not recommended for production systems.
+    # Local configuration for filesystem storage.
+    local:
+      path: /var/lib/tempo/blocks # Directory to store the TSDB blocks.
+    s3:
+      endpoint: s3.ap-south-1.amazonaws.com
+      region: ap-south-1
+      access_key: "***" # This is a secret injected via an environment variable
+      secret_key: "***" # This is a secret injected via an environment variable
+      bucket: "***"
+      prefix: tempo
     block:
       bloom_filter_false_positive: .05 # Bloom filter false positive rate.  lower values create larger filters but fewer false positives.
     # Write Ahead Log (WAL) configuration.
     wal:
-      path: /var/lib/tempo/wal             # Directory to store the the WAL locally.
-    # Local configuration for filesystem storage.
-    local:
-      path: /var/lib/tempo/blocks          # Directory to store the TSDB blocks.
+      path: /var/lib/tempo/wal # Directory to store the the WAL locally.
     # Pool used for finding trace IDs.
     pool:
-      max_workers: 100                 # Worker pool determines the number of parallel requests to the object store backend.
-      queue_depth: 10000               # Maximum depth for the querier queue jobs. A job is required for each block searched.
+      max_workers: 100 # Worker pool determines the number of parallel requests to the object store backend.
+      queue_depth: 10000 # Maximum depth for the querier queue jobs. A job is required for each block searched.
 
 # Configures the metrics generator component of Tempo.
 metrics_generator:
@@ -73,31 +80,31 @@ metrics_generator:
   processor:
     # Span metrics create metrics based on span type, duration, name and service.
     span_metrics:
-        # Configure extra dimensions to add as metric labels.
-        dimensions:
-          - http.method
-          - http.target
-          - http.status_code
-          - service.version
+      # Configure extra dimensions to add as metric labels.
+      dimensions:
+        - http.method
+        - http.target
+        - http.status_code
+        - service.version
     # Service graph metrics create node and edge metrics for determinng service interactions.
     service_graphs:
-        # Configure extra dimensions to add as metric labels.
-        dimensions:
-          - http.method
-          - http.target
-          - http.status_code
-          - service.version
+      # Configure extra dimensions to add as metric labels.
+      dimensions:
+        - http.method
+        - http.target
+        - http.status_code
+        - service.version
     # Configure the local blocks processor.
     local_blocks:
-        # Ensure that metrics blocks are flushed to storage so TraceQL metrics queries against historical data.
-        flush_to_storage: true
+      # Ensure that metrics blocks are flushed to storage so TraceQL metrics queries against historical data.
+      flush_to_storage: true
 
   # The registry configuration determines how to process metrics.
   registry:
-    collection_interval: 5s                 # Create new metrics every 5s.
+    collection_interval: 5s # Create new metrics every 5s.
     # Configure extra labels to be added to metrics.
     external_labels:
-      source: tempo                         # Add a `{source="tempo"}` label.
+      source: tempo # Add a `{source="tempo"}` label.
 
   # Configures where the store for metrics is located.
   storage:
@@ -105,7 +112,7 @@ metrics_generator:
     path: /var/lib/tempo/generator/wal
     # Where to remote write metrics to.
     remote_write:
-      - url: http://mimir:9009/api/v1/push  # URL of locally running Mimir instance.
+      - url: http://mimir:9009/api/v1/push # URL of locally running Mimir instance.
         send_exemplars: true # Send exemplars along with their metrics.
 
   traces_storage:
@@ -113,4 +120,8 @@ metrics_generator:
 
 # Global override configuration.
 overrides:
-  metrics_generator_processors: ['service-graphs', 'span-metrics','local-blocks'] # The types of metrics generation to enable for each tenant.
+  metrics_generator_processors: [
+      "service-graphs",
+      "span-metrics",
+      "local-blocks",
+    ] # The types of metrics generation to enable for each tenant.

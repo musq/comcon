@@ -188,7 +188,7 @@ services:
       - "11215:3100"
     volumes:
       - ./configs/loki/loki.yaml:/etc/loki/loki.yaml
-      - ~/src/comcon-volumes/loki:/loki
+      - ~/src/comcon-volumes/loki:/var/lib/loki
 
   mimir:
     # WARN: We are using a custom mimir image to allow healthcheck. Mimir is
@@ -196,7 +196,10 @@ services:
     # security issues). So zguydev has created a new image with a healthcheck program.
     # https://github.com/grafana/mimir/issues/9034#issuecomment-3231351109
     image: zguydev/mimir-healthcheck:2.17.1
-    command: ["-config.file=/etc/mimir/mimir.yaml"]
+    command: ["-config.file=/etc/mimir/mimir.yaml", "-config.expand-env=true"]
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     ports:
       - "11220:9009"
     volumes:
