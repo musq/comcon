@@ -61,6 +61,14 @@ services:
       - ./configs/valkey/secrets/valkey.key:/run/valkey.key
       - ${CERTIFI_PLUS_MKCERT_CACERT_PATH}:/run/certifi_plus_mkcert_cacert.pem
 
+  memcached:
+    image: memcached:1.6-alpine
+    command: ["memcached", "--memory-limit=128", "--threads=4"]
+    healthcheck:
+      test: echo "version" | nc -vn -w 1 127.0.0.1 11211
+    ports:
+      - "11325:11211"
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.7.2
     environment:
@@ -198,6 +206,7 @@ services:
     image: zguydev/mimir-healthcheck:2.17.1
     command: ["-config.file=/etc/mimir/mimir.yaml", "-config.expand-env=true"]
     environment:
+      - AWS_S3_BUCKET=sbrk-monitoring-test
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     ports:

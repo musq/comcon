@@ -1,6 +1,8 @@
 # This is a complete configuration to deploy Loki backed by the filesystem.
 # The index will be shipped to the filesystem storage via tsdb-shipper.
 
+# https://github.com/grafana/loki/blob/main/docs/sources/shared/configuration.md
+
 # https://grafana.com/docs/loki/latest/configure/#supported-contents-and-default-values-of-lokiyaml
 # https://github.com/grafana/intro-to-mltp/blob/cf17dee7761393014dfd22ba8d048c9a20f01e06/loki/loki.yaml
 # https://github.com/grafana/loki-fundamentals/blob/0258e8f6bdc387409f03ee6fbaa48244cbe1e36f/loki-config.yaml
@@ -69,6 +71,8 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /var/lib/loki/tsdb-shipper-active
     cache_location: /var/lib/loki/tsdb-shipper-cache
+    # https://community.grafana.com/t/s3-prefix-for-index-and-chunk/76972/5
+    shared_store_key_prefix: loki
   # https://grafana.com/docs/loki/latest/configure/#s3_storage_config
   aws:
     endpoint: s3.ap-south-1.amazonaws.com

@@ -1,10 +1,18 @@
 # For more information on this configuration, see the complete reference guide at
+# https://github.com/grafana/mimir/blob/main/docs/sources/mimir/configure/configuration-parameters/index.md
 # https://grafana.com/docs/mimir/latest/references/configuration-parameters/
 
-# Disable multi-tenancy and restrict to single tenant.
+# Disable multi-tenancy and restrict to single tenant
 multitenancy_enabled: false
 
-# The server block configures the Mimir server.
+# (advanced) Tenant ID to use when multitenancy is disabled
+no_auth_tenant: sembark
+
+# (experimental) Maximum number of groups allowed per tenant by which specified
+# distributor and ingester metrics can be further separated
+max_separate_metrics_groups_per_user: 10000
+
+# The server block configures the Mimir server
 server:
   # Listen on port 9009 for all incoming requests.
   http_listen_port: 9009
@@ -13,91 +21,93 @@ server:
 
 common:
   storage:
-    backend: s3
+    backend: filesystem
     s3:
       endpoint: s3.ap-south-1.amazonaws.com
       region: ap-south-1
       access_key_id: ${AWS_ACCESS_KEY_ID} # This is a secret injected via an environment variable
       secret_access_key: ${AWS_SECRET_ACCESS_KEY} # This is a secret injected via an environment variable
-      # access_key_id: "${AWS_ACCESS_KEY_ID}" # This is a secret injected via an environment variable
-      # secret_access_key: "${AWS_SECRET_ACCESS_KEY}" # This is a secret injected via an environment variable
 
 # The block storage configuration determines where the metrics TSDB data is stored.
 blocks_storage:
-  storage_prefix: "mimirBLOCKS"
   # Directory in which to store configuration for object storage.
   filesystem:
-    dir: /var/lib/mimir/data/tsdb
+    dir: /var/lib/mimir/blocks
   s3:
-    bucket_name: "***"
+    bucket_name: ${AWS_S3_BUCKET}
+  storage_prefix: "mimirBlocks"
 
-  # Directory in which to store synchronised TSDB index headers.
   bucket_store:
+    # Directory to store synchronized TSDB index headers. This directory is not
+    # required to be persisted between restarts, but it's highly recommended in
+    # order to improve the store-gateway startup time.
     sync_dir: /var/lib/mimir/tsdb-sync
-  # Direction in which to store TSDB WAL data.
+    chunks_cache:
+      backend: memcached
+      memcached:
+        addresses: "memcached:11211"
+    metadata_cache:
+      backend: memcached
+      memcached:
+        addresses: "memcached:11211"
+
+  # Directory in which to store TSDB WAL data.
   tsdb:
     dir: /var/lib/mimir/tsdb
 
 alertmanager_storage:
-  storage_prefix: "mimirALERTMANAGER"
   filesystem:
     # The directory in which to store alertmanager data
     dir: /var/lib/mimir/alertmanager
   s3:
-    bucket_name: "***"
+    bucket_name: ${AWS_S3_BUCKET}
+  storage_prefix: "mimirAlertManager"
 
 # The ruler storage block configures ruler storage settings.
 ruler_storage:
-  storage_prefix: "mimirRULER"
   filesystem:
     # The directory in which to store rules.
-    dir: /var/lib/mimir/rules
+    dir: /var/lib/mimir/ruler
   s3:
-    bucket_name: "***"
+    bucket_name: ${AWS_S3_BUCKET}
+  storage_prefix: "mimirRuler"
 
-# The compactor block configures the compactor responsible for compacting TSDB blocks.
-compactor:
-  # Directory to temporarily store blocks underdoing compaction.
-  data_dir: /var/lib/mimir/compactor
-  # The sharding ring type used to share the hashed ring for the compactor.
-  sharding_ring:
-    # Use memberlist backend store (the default).
-    kvstore:
-      store: memberlist
-
-# The distributor receives incoming metrics data for the system.
-distributor:
-  # The ring to share hash ring data across instances.
-  ring:
-    # The address advertised in the ring. Localhost.
-    instance_addr: 127.0.0.1
-    # Use memberlist backend store (the default).
-    kvstore:
-      store: memberlist
-
-# The ingester receives data from the distributor and processes it into indices and blocks.
+# Ingester receives data from the distributor and processes it into indices and blocks
 ingester:
-  # The ring to share hash ring data across instances.
   ring:
-    # The address advertised in the ring. Localhost.
-    instance_addr: 127.0.0.1
-    # Use memberlist backend store (the default).
-    kvstore:
-      store: memberlist
-    # Only run one instance of the ingesters.
-    # Note: It is highly recommended to run more than one ingester in production, the default is an RF of 3.
+    # Run only one instance of the ingesters
+    # WARN: It is highly recommended to run more than one ingester in
+    # production (default is 3)
     replication_factor: 1
+
+# The compactor block configures the compactor responsible for compacting TSDB blocks
+compactor:
+  # Directory to temporarily store blocks undergoing compaction.
+  # Any corrupt/partial block (i.e. without meta.json file) in this directory
+  # will automatically be deleted after limits.compactor_partial_block_deletion_delay.
+  # As a result, this directory's size is also kept under control automatically.
+  data_dir: /var/lib/mimir/compactor
+  # (experimental) If enabled, the compactor constructs and uploads sparse index
+  # headers to object storage during each compaction cycle. This allows
+  # store-gateway instances to use the sparse headers from object storage instead
+  # of recreating them locally.
+  # CLI flag: -compactor.upload-sparse-index-headers
+  upload_sparse_index_headers: true
 
 # The store gateway block configures gateway storage.
 store_gateway:
   # Configuration for the hash ring.
   sharding_ring:
-    # Only run a single instance. In production setups, the replication factor must
-    # be set on the querier and ruler as well.
+    # Run a single instance
+    # WARN: In production setups, the replication factor must
+    # be set on the querier and ruler as well
     replication_factor: 1
 
 # Global limits configuration.
 limits:
+  # Automatically delete blocks containing samples older than 2.5 months.
+  # This helps with keeping S3 bucket size under control.
+  compactor_blocks_retention_period: 10w
   # A maximum of 100000 exemplars in memory at any one time.
   # This setting enables exemplar processing and storage.
   max_global_exemplars_per_user: 100000
