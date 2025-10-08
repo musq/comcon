@@ -209,6 +209,7 @@ services:
       - AWS_S3_BUCKET=sbrk-monitoring-test
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - MEMCACHED_ADDRESS="memcached:11211"
     ports:
       - "11220:9009"
     volumes:

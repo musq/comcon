@@ -21,7 +21,10 @@ server:
 
 common:
   storage:
-    backend: filesystem
+    # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+    # filesystem.
+    # CLI flag: -common.storage.backend
+    backend: s3
     s3:
       endpoint: s3.ap-south-1.amazonaws.com
       region: ap-south-1
@@ -37,6 +40,8 @@ blocks_storage:
     bucket_name: ${AWS_S3_BUCKET}
   storage_prefix: "mimirBlocks"
 
+  # This configures how the querier and store-gateway discover and synchronize
+  # blocks stored in the bucket
   bucket_store:
     # Directory to store synchronized TSDB index headers. This directory is not
     # required to be persisted between restarts, but it's highly recommended in
@@ -45,14 +50,15 @@ blocks_storage:
     chunks_cache:
       backend: memcached
       memcached:
-        addresses: "memcached:11211"
+        addresses: ${MEMCACHED_ADDRESS}
     metadata_cache:
       backend: memcached
       memcached:
-        addresses: "memcached:11211"
+        addresses: ${MEMCACHED_ADDRESS}
 
-  # Directory in which to store TSDB WAL data.
   tsdb:
+    # Directory to store TSDBs (including WAL) in the ingesters.
+    # This directory is required to be persisted between restarts.
     dir: /var/lib/mimir/tsdb
 
 alertmanager_storage:
@@ -80,7 +86,7 @@ ingester:
     # production (default is 3)
     replication_factor: 1
 
-# The compactor block configures the compactor responsible for compacting TSDB blocks
+# Configure the compactor responsible for compacting TSDB blocks
 compactor:
   # Directory to temporarily store blocks undergoing compaction.
   # Any corrupt/partial block (i.e. without meta.json file) in this directory
@@ -94,7 +100,7 @@ compactor:
   # CLI flag: -compactor.upload-sparse-index-headers
   upload_sparse_index_headers: true
 
-# The store gateway block configures gateway storage.
+# Configure store-gateway component to connect to the object storage
 store_gateway:
   # Configuration for the hash ring.
   sharding_ring:
@@ -108,21 +114,28 @@ limits:
   # Automatically delete blocks containing samples older than 2.5 months.
   # This helps with keeping S3 bucket size under control.
   compactor_blocks_retention_period: 10w
-  # A maximum of 100000 exemplars in memory at any one time.
+
+  # (experimental) The maximum number of exemplars in memory, across the cluster.
+  # 0 to disable exemplars ingestion.
   # This setting enables exemplar processing and storage.
+  # CLI flag: -ingester.max-global-exemplars-per-user
   max_global_exemplars_per_user: 100000
+
+  # Per-tenant ingestion rate limit in samples per second.
+  # CLI flag: -distributor.ingestion-rate-limit
   ingestion_rate: 30000
+
   # Enable Native Histograms
   native_histograms_ingestion_enabled: true
   # Samples with more buckets than the limit will be scaled down, meaning that
   # the resolution will be reduced and buckets will be merged until either the
   # number of buckets is under the limit or the minimal resolution is reached
   max_native_histogram_buckets: 160
+
   # (experimental) Whether to keep identifying OTel resource attributes in the
-  # target_info metric on top of converting to job and instance labels.
+  # target_info metric on top of converting to job and instance labels
   # CLI flag: -distributor.otel-keep-identifying-resource-attributes
   otel_keep_identifying_resource_attributes: true
-  # (experimental) Optionally specify OTel resource attributes to promote to
-  # labels.
+  # (experimental) Optionally specify OTel resource attributes to promote to labels
   # CLI flag: -distributor.otel-promote-resource-attributes
   promote_otel_resource_attributes: "service.instance.id, service.name, service.namespace, service.version, cloud.availability_zone, cloud.region, container.name, deployment.environment, deployment.environment.name, k8s.cluster.name, k8s.container.name, k8s.cronjob.name, k8s.daemonset.name, k8s.deployment.name, k8s.job.name, k8s.namespace.name, k8s.pod.name, k8s.replicaset.name, k8s.statefulset.name"
