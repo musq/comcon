@@ -75,7 +75,7 @@ storage_config:
   # Experimental. Sets a constant prefix for all keys inserted into object
   # storage. Example: loki/
   # CLI flag: -store.object-prefix
-  object_prefix: "loki/"
+  object_prefix: loki
 
   # https://grafana.com/docs/loki/latest/configure/#s3_storage_config
   aws:

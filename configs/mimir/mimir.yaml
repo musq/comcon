@@ -38,7 +38,7 @@ blocks_storage:
     dir: /var/lib/mimir/blocks
   s3:
     bucket_name: ${AWS_S3_BUCKET}
-  storage_prefix: "mimirBlocks"
+  storage_prefix: mimir
 
   # This configures how the querier and store-gateway discover and synchronize
   # blocks stored in the bucket
@@ -67,7 +67,7 @@ alertmanager_storage:
     dir: /var/lib/mimir/alertmanager
   s3:
     bucket_name: ${AWS_S3_BUCKET}
-  storage_prefix: "mimirAlertManager"
+  storage_prefix: alertmanager
 
 # The ruler storage block configures ruler storage settings.
 ruler_storage:
@@ -76,7 +76,7 @@ ruler_storage:
     dir: /var/lib/mimir/ruler
   s3:
     bucket_name: ${AWS_S3_BUCKET}
-  storage_prefix: "mimirRuler"
+  storage_prefix: ruler
 
 # Ingester receives data from the distributor and processes it into indices and blocks
 ingester:
