@@ -184,7 +184,7 @@ services:
     # Find latest semantic versions of Loki here:
     # https://github.com/grafana/loki/releases
     image: grafana/loki:3.5.5
-    command: ["-config.file=/etc/loki/loki.yaml"]
+    command: ["-config.file=/etc/loki/loki.yaml", "-config.expand-env=true"]
     healthcheck:
       # https://community.grafana.com/t/loki-healthcheck-in-docker-compose/117767/4
       test: wget --quiet --tries=1 --output-document=- http://localhost:3100/ready | grep -q -w ready || exit 1
@@ -192,6 +192,10 @@ services:
       interval: 3s
       timeout: 1s
       retries: 20
+    environment:
+      - AWS_S3_BUCKET=sbrk-monitoring-test
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     ports:
       - "11215:3100"
     volumes:
@@ -205,6 +209,9 @@ services:
     # https://github.com/grafana/mimir/issues/9034#issuecomment-3231351109
     image: zguydev/mimir-healthcheck:2.17.1
     command: ["-config.file=/etc/mimir/mimir.yaml", "-config.expand-env=true"]
+    depends_on:
+      memcached:
+        condition: service_healthy
     environment:
       - AWS_S3_BUCKET=sbrk-monitoring-test
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}

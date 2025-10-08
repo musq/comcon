@@ -71,15 +71,19 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /var/lib/loki/tsdb-shipper-active
     cache_location: /var/lib/loki/tsdb-shipper-cache
-    # https://community.grafana.com/t/s3-prefix-for-index-and-chunk/76972/5
-    shared_store_key_prefix: loki
+
+  # Experimental. Sets a constant prefix for all keys inserted into object
+  # storage. Example: loki/
+  # CLI flag: -store.object-prefix
+  object_prefix: "loki/"
+
   # https://grafana.com/docs/loki/latest/configure/#s3_storage_config
   aws:
     endpoint: s3.ap-south-1.amazonaws.com
     region: ap-south-1
-    access_key_id: "***" # This is a secret injected via an environment variable
-    secret_access_key: "***" # This is a secret injected via an environment variable
-    bucketnames: "***"
+    access_key_id: ${AWS_ACCESS_KEY_ID} # This is a secret injected via an environment variable
+    secret_access_key: ${AWS_SECRET_ACCESS_KEY} # This is a secret injected via an environment variable
+    bucketnames: ${AWS_S3_BUCKET}
 
 pattern_ingester:
   enabled: true
