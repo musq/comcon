@@ -229,7 +229,7 @@ services:
     # Find latest semantic versions of Tempo here:
     # https://github.com/grafana/tempo/releases
     image: grafana/tempo:2.8.2
-    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    command: ["-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true"]
     healthcheck:
       # https://github.com/grafana/tempo/issues/5352#issue-3196355517
       test:
@@ -242,6 +242,10 @@ services:
       interval: 3s
       timeout: 1s
       retries: 20
+    environment:
+      - AWS_S3_BUCKET=sbrk-monitoring-test
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     ports:
       - "11225:3200"
     volumes:
