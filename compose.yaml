@@ -294,7 +294,7 @@ services:
   grafana:
     # Find latest semantic versions of Grafana here:
     # https://github.com/grafana/grafana/releases
-    image: grafana/grafana:12.1.1
+    image: grafana/grafana:12.1
     environment:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_ANONYMOUS_ENABLED=true
