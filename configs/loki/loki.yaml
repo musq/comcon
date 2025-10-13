@@ -1,83 +1,101 @@
-# This is a complete configuration to deploy Loki backed by the filesystem.
-# The index will be shipped to the filesystem storage via tsdb-shipper.
-
 # https://github.com/grafana/loki/blob/main/docs/sources/shared/configuration.md
 
 # https://grafana.com/docs/loki/latest/configure/#supported-contents-and-default-values-of-lokiyaml
 # https://github.com/grafana/intro-to-mltp/blob/cf17dee7761393014dfd22ba8d048c9a20f01e06/loki/loki.yaml
 # https://github.com/grafana/loki-fundamentals/blob/0258e8f6bdc387409f03ee6fbaa48244cbe1e36f/loki-config.yaml
 
+# A comma-separated list of components to run. The default value 'all' runs Loki
+# in single binary mode. The value 'read' is an alias to run only read-path
+# related components such as the querier and query-frontend, but all in the same
+# process. The value 'write' is an alias to run only write-path related
+# components such as the distributor and compactor, but all in the same process.
+# Supported values: all, compactor, distributor, ingester, querier,
+# query-scheduler, ingester-querier, query-frontend, index-gateway, ruler,
+# table-manager, read, write. A full list of available targets can be printed
+# when running Loki with the '-list-targets' command line flag.
+# CLI flag: -target
+target: all
+
+# Enables authentication through the X-Scope-OrgID header, which must be present
+# if true. If false, the OrgID will always be set to 'fake'.
+# CLI flag: -auth.enabled
 auth_enabled: false
 
+# The amount of virtual memory in bytes to reserve as ballast in order to
+# optimize garbage collection. Larger ballasts result in fewer garbage
+# collection passes, reducing CPU overhead at the cost of heap size. The ballast
+# will not consume physical memory, because it is never read from. It will,
+# however, distort metrics, because it is counted as live memory.
+# CLI flag: -config.ballast-bytes
+ballast_bytes: 150000000 # ~150MB
+
 ui:
+  # Enable the experimental Loki UI.
+  # CLI flag: -ui.enabled
   enabled: true
 
-# Configuration block for the Loki server.
 server:
   http_listen_port: 3100 # HTTP server listen port
   grpc_listen_port: 9095 # gRPC server listen port
-  log_level: info # Set the log level to info.
+  log_level: info
 
 # The limits configuration block allows default global and per-tenant limits to
 # be set (which can be altered in an overrides block).
 limits_config:
+  max_line_size_truncate: true # Truncate lines that exceed max_line_size (256KB) instead of discarding it completely
+  # max_line_size_truncate_identifier: "..." # Identifier that is added at the end of a truncated log line
   allow_structured_metadata: true
   # In this case, volume usage is be enabled globally (as there is one tenant).
   # This is used by the Logs Explorer app in Grafana.
   volume_enabled: true
+  # Retention period to apply to stored data, only applies if retention_enabled is
+  # true in the compactor config. As of version 2.8.0, a zero value of 0 or 0s
+  # disables retention. In previous releases, Loki did not properly honor a zero
+  # value to disable retention and a really large value should be used instead.
+  # CLI flag: -store.retention
+  retention_period: 1h
 
 # The common block is used to set options for all of the components that make
 # up Loki. These can be overridden using the specific configuration blocks for
 # each component.
 common:
-  instance_addr:
-    127.0.0.1 # The address at which this Loki instance can be reached on the local hash ring.
-    # Loki is running as a single binary, so it's the localhost address.
-  path_prefix: /var/lib/loki # Prefix for storage path
-  # Configuration of the underlying Loki storage system.
   storage:
-    # Use the local filesystem. In a production environment, you'd use an object store like S3 or GCS.
     filesystem:
-      chunks_directory: /var/lib/loki/chunks # The FS directory to store the Loki chunks in.
-      rules_directory: /var/lib/loki/rules # The FS directory to store the Loki rules in.
-  replication_factor:
-    1 # The replication factor (RF) determines how many ingesters will store each chunk.
-    # In this case, we have one ingester, so the RF is 1, but in a production system
-    # you'd have multiple ingesters and set the RF to a higher value for resilience.
-  # The ring configuration block is used to configure the hash ring that all components use to communicate with each other.
+      rules_directory: /var/lib/loki/rules # Directory to store the rules in
+  # Deprecated: How many index gateway instances are assigned to each tenant.
+  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.
+  # CLI flag: -replication-factor
+  replication_factor: 1
+  # The ring configuration block is used to configure the hash ring that all
+  # components use to communicate with each other
   ring:
-    # Use an in-memory ring. In a production environment, you'd use a distributed ring like memberlist, Consul or etcd.
     kvstore:
-      store: inmemory
+      store: memberlist
 
 # The schema_config block is used to configure the schema that Loki uses to
 # store log data. Loki allows the use of multiple schemas based on specific
 # time periods. This allows backwards compatibility on schema changes.
 schema_config:
-  # Only one config is specified here.
   configs:
-    - from: 2020-10-24 # When the schema applies from.
-      store: tsdb # Where the schema is stored, in this case using the TSDB store.
-      object_store: s3 # As configured in the common block above, the object store is the local filesystem.
-      schema: v13 # Specify the schema version to use, in this case the latest version (v13).
-      # The index configuration block is used to configure how indexing tables are created and stored. Index tables
-      # are the directory that allows Loki to determine which chunks to read when querying for logs.
+    - from: 2020-10-24 # Date onwards which this schema is applicable
+      store: tsdb
+      schema: v13
+      object_store: s3 # Possible values: s3, filesystem. s3 is an alias for aws.
       index:
-        prefix: index_ # Prefix for all index tables.
-        period: 24h # The period for which each index table covers. In this case, 24 hours.
+        prefix: index_
+        period: 24h # The period for which each index table covers
 
-# https://grafana.com/docs/loki/latest/configure/#storage_config
 storage_config:
   tsdb_shipper:
-    active_index_directory: /var/lib/loki/tsdb-shipper-active
-    cache_location: /var/lib/loki/tsdb-shipper-cache
+    # Directory where ingesters would write index files which will then be
+    # uploaded by shipper to configured storage
+    active_index_directory: /var/lib/loki/tsdb-index
+    # Cache location for downloading index files from the storage for use in queries
+    cache_location: /var/lib/loki/tsdb-cache
 
-  # Experimental. Sets a constant prefix for all keys inserted into object
-  # storage. Example: loki/
-  # CLI flag: -store.object-prefix
-  object_prefix: loki
+  filesystem:
+    directory: /var/lib/loki/chunks # Directory to store chunks in
 
-  # https://grafana.com/docs/loki/latest/configure/#s3_storage_config
   aws:
     endpoint: s3.ap-south-1.amazonaws.com
     region: ap-south-1
@@ -85,23 +103,46 @@ storage_config:
     secret_access_key: ${AWS_SECRET_ACCESS_KEY} # This is a secret injected via an environment variable
     bucketnames: ${AWS_S3_BUCKET}
 
+  # Experimental. Sets a constant prefix for all keys inserted into object
+  # storage. Example: loki/
+  # CLI flag: -store.object-prefix
+  object_prefix: loki
+
+distributor:
+  otlp_config:
+    # List of default otlp resource attributes to be picked as index labels.
+    # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
+    # Already removed k8s.pod.name AND service.instance.id from the list as mentioned in the advisory:
+    # https://grafana.com/docs/loki/latest/get-started/labels/remove-default-labels/
+    default_resource_attributes_as_index_labels: [
+        deployment.environment.name,
+        service.namespace,
+        service.name,
+        # Default list:
+        # service.name service.namespace deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name,
+      ]
+
+ingester:
+  chunk_encoding: zstd
+  wal:
+    dir: /var/lib/loki/wal
+
 pattern_ingester:
   enabled: true
 
-# The ruler configuration block to configure the ruler (for recording rules and alerts) in Loki.
-ruler:
-  alertmanager_url:
-    http://localhost:9093 # The URL of the Alertmanager to send alerts to. Again, this is a single
-    # binary instance running on the same host, so it's localhost.
-# By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
-# analytics to Grafana Labs. These statistics are sent to https://stats.grafana.org/
-#
-# Statistics help us better understand how Loki is used, and they show us performance
-# levels for most users. This helps us prioritize features and documentation.
-# For more information on what's sent, look at
-# https://github.com/grafana/loki/blob/main/pkg/usagestats/stats.go
-# Refer to the buildReport method to see what goes into a report.
-#
-# If you would like to disable reporting, uncomment the following lines:
-# analytics:
-#   reporting_enabled: false
+compactor:
+  # Directory where files can be downloaded for compaction
+  # CLI flag: -compactor.working-directory
+  working_directory: /var/lib/loki/compactor
+  # Interval at which to re-run the compaction operation
+  # CLI flag: -compactor.compaction-interval
+  compaction_interval: 30m
+  # Activate custom (per-stream,per-tenant) retention
+  # CLI flag: -compactor.retention-enabled
+  retention_enabled: true
+  # Store used for managing delete requests
+  # CLI flag: -compactor.delete-request-store
+  delete_request_store: s3
+  # Path prefix for storing delete requests
+  # CLI flag: -compactor.delete-request-store.key-prefix
+  delete_request_store_key_prefix: "index/"

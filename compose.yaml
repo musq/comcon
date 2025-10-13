@@ -183,8 +183,13 @@ services:
   loki:
     # Find latest semantic versions of Loki here:
     # https://github.com/grafana/loki/releases
-    image: grafana/loki:3.5.5
-    command: ["-config.file=/etc/loki/loki.yaml", "-config.expand-env=true"]
+    image: grafana/loki:3.5.7
+    command:
+      [
+        "-config.file=/etc/loki/loki.yaml",
+        "-config.expand-env=true",
+        "-log-config-reverse-order",
+      ]
     healthcheck:
       # https://community.grafana.com/t/loki-healthcheck-in-docker-compose/117767/4
       test: wget --quiet --tries=1 --output-document=- http://localhost:3100/ready | grep -q -w ready || exit 1
