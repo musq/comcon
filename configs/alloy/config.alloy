@@ -112,20 +112,31 @@ otelcol.receiver.otlp "default" {
 // https://grafana.com/docs/agent/latest/flow/reference/components/otelcol.processor.batch
 otelcol.processor.batch "default" {
     // Wait until we've received 1000 samples, up to a maximum of 2000
-    send_batch_size = 1000
-    send_batch_max_size = 2000
+    send_batch_size = 2000
+    send_batch_max_size = 3000
     // Or until 2 seconds have elapsed
     timeout = "2s"
 
     // Forwards events when Alloy has batched enough data
     output {
-        logs    = [otelcol.exporter.otlphttp.loki.input]
-        metrics = [otelcol.processor.deltatocumulative.default.input]
+        logs    = [otelcol.processor.groupbyattrs.default.input]
+        metrics = [otelcol.processor.groupbyattrs.default.input]
         // metrics = [otelcol.processor.attributes.alter_metrics_labels.input]
-        traces  = [otelcol.exporter.otlphttp.tempo.input]
+        traces  = [otelcol.processor.groupbyattrs.default.input]
         // logs    = [otelcol.processor.resourcedetection.default.input]
         // metrics = [otelcol.processor.resourcedetection.default.input]
         // traces  = [otelcol.processor.resourcedetection.default.input]
+    }
+}
+
+// This processor accepts spans, metrics, and traces from other otelcol
+// components and groups them under the same resource
+// https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.groupbyattrs
+otelcol.processor.groupbyattrs "default" {
+    output {
+        logs    = [otelcol.processor.memory_limiter.default.input]
+        metrics = [otelcol.processor.deltatocumulative.default.input]
+        traces  = [otelcol.processor.memory_limiter.default.input]
     }
 }
 
@@ -180,7 +191,24 @@ otelcol.processor.attributes "alter_metrics_labels" {
 // https://grafana.com/blog/2023/09/26/opentelemetry-metrics-a-guide-to-delta-vs.-cumulative-temporality-trade-offs/
 otelcol.processor.deltatocumulative "default" {
     output {
+        metrics = [otelcol.processor.memory_limiter.default.input]
+    }
+}
+
+// This processor is used to prevent out of memory situations on a telemetry
+// pipeline by performing periodic checks of memory usage. If usage exceeds the
+// defined limits, data is dropped and garbage collections are triggered to
+// reduce it.
+// https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.processor.memory_limiter
+otelcol.processor.memory_limiter "default" {
+    check_interval = "30s"
+    limit = "1GiB" // Maximum amount of memory targeted to be allocated by the process heap
+    spike_limit = "200MiB" // Maximum spike expected between the measurements of memory usage
+
+    output {
+        logs    = [otelcol.exporter.otlphttp.loki.input]
         metrics = [otelcol.exporter.otlphttp.mimir.input]
+        traces  = [otelcol.exporter.otlphttp.tempo.input]
     }
 }
 
